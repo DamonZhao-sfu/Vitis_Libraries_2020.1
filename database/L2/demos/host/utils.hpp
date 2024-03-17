@@ -20,6 +20,9 @@
 
 #include <new>
 #include <cstdlib>
+#include <string>
+#include <algorithm>
+#include <cctype>
 
 template <typename T>
 T* aligned_alloc(std::size_t num) {
@@ -103,6 +106,13 @@ inline bool is_file(const char* path) {
 
 inline bool is_file(const std::string& path) {
     return is_file(path.c_str());
+}
+
+inline std::string toUpperCase(const std::string & str) {
+    std::string upperStr(str);
+    std::transform(upperStr.begin(), upperStr.end(), upperStr.begin(),
+                   [](unsigned char c) { return std::toupper(c); });
+    return upperStr;
 }
 
 #endif // UTILS_H

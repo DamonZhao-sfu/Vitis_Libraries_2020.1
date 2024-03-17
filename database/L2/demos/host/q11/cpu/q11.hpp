@@ -19,7 +19,7 @@ void NationFilter(Table& tin, Table& tout) {
     int r = 0;
     for (int i = 0; i < nrow; i++) {
         std::array<char, TPCH_READ_NATION_LEN + 1> n_name = tin.getcharN<char, TPCH_READ_NATION_LEN + 1>(i, 1);
-        if (!strcmp("GERMANY", n_name.data())) {
+        if (!strcmp("IRAN", n_name.data())) {
             int32_t n_nationkey = tin.getInt32(i, 0);
             tout.setInt32(r, 0, n_nationkey);
             // tout.setcharN<char,TPCH_READ_NATION_LEN + 1>(r,1,n_name);
@@ -157,6 +157,7 @@ void q11Filter_Sort(int64_t filterv, Table& tin, Table& tout) {
         if (r < 10) std::cout << std::dec << tout.getInt32(r, 0) << " " << tout.getInt64(r, 1) << std::endl;
         ++r;
     }
+    std::cout<< "row " << r << std::endl;
     tout.setNumRow(r);
 }
 // t4

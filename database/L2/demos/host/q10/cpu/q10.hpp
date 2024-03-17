@@ -20,7 +20,7 @@ void q10Join_O_L(Table& tin1, Table& tin2, Table& tout) {
     int nrow1 = tin1.getNumRow();
     for (int i = 0; i < nrow1; ++i) {
         int o_orderdate = tin1.getInt32(i, 0);
-        if (19931001 <= o_orderdate && o_orderdate < 19940101) {
+        if (19940801 <= o_orderdate && o_orderdate < 19941101) {
             int o_orderkey = tin1.getInt32(i, 1);
             int o_custkey = tin1.getInt32(i, 2);
             ht1.insert(std::make_pair(o_orderkey, o_custkey));
@@ -35,7 +35,7 @@ void q10Join_O_L(Table& tin1, Table& tin2, Table& tout) {
     int nrow2 = tin2.getNumRow();
     for (int i = 0; i < nrow2; ++i) {
         int l_returnflag = tin2.getInt32(i, 0);
-        if (l_returnflag == 'R') { // 82
+        if (l_returnflag == 82) { // 82
             // l_orderkey,l_extendedprice,l_discount
             int l_orderkey = tin2.getInt32(i, 1);
             int l_extendedprice = tin2.getInt32(i, 2);

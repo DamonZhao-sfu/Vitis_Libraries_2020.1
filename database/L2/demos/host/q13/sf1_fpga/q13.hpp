@@ -193,7 +193,7 @@ void q13Sort(Table& tin, Table& tout) {
     for (auto& it : rows) {
         tout.setInt32(r, 0, it.c_count);
         tout.setInt32(r, 1, it.custdist);
-        std::cout << it.c_count << " " << it.custdist << std::endl;
+        //std::cout << it.c_count << " " << it.custdist << std::endl;
         ++r;
     }
     tout.setNumRow(r);

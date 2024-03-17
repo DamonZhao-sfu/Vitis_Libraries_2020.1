@@ -20,6 +20,15 @@
 #include "xf_database/dynamic_alu_host.hpp"
 #include "xf_database/enums.hpp"
 #include <fstream>
+#include <string>
+#include <orc/OrcFile.hh>
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <ctime>
+#include <cstdio>
+#include <dirent.h>
+#include "tpch_read_2.hpp"
 #endif
 #ifndef _GQE_API_
 #define _GQE_API_
@@ -45,6 +54,7 @@
 #define XCL_BANK13 XCL_BANK(13)
 #define XCL_BANK14 XCL_BANK(14)
 #define XCL_BANK15 XCL_BANK(15)
+
 
 long getkrltime(cl::Event e1, cl::Event e2) {
     cl_ulong start, end;
@@ -114,6 +124,8 @@ void print_d_time(cl::Event s, cl::Event e, int64_t base, const std::string kinf
     std::cout << std::dec << kinfo << " end time of Device " << etime << " ms" << std::endl;
     std::cout << std::dec << kinfo << " duration time of Device " << duration << " ms" << std::endl;
 }
+
+
 template <typename T>
 int load_dat(T* data, const std::string& name, const std::string& dir, size_t n, size_t sizeT) {
     if (!data) {
@@ -126,6 +138,7 @@ int load_dat(T* data, const std::string& name, const std::string& dir, size_t n,
         std::cerr << "ERROR: " << fn << " cannot be opened for binary read." << std::endl;
     }
     // size_t cnt = fread(data, sizeof(T), n, f);
+    // n is nrow, sizeT is columnWidth
     size_t cnt = fread((void*)data, sizeT, n, f);
     fclose(f);
     if (cnt != n) {
@@ -135,15 +148,43 @@ int load_dat(T* data, const std::string& name, const std::string& dir, size_t n,
     return 0;
 }
 
-template <typename T>
+std::vector<std::string> getOrcFiles(const std::string &directory) {
+    std::vector<std::string> orcFiles;
+    DIR* dir = opendir(directory.c_str());
+    if (dir == nullptr) {
+        perror("opendir");
+        return orcFiles;
+    }
 
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != nullptr) {
+        std::string filename(entry->d_name);
+        if (filename.size() >= 4 && filename.substr(filename.size() - 4) == ".orc") {
+            orcFiles.push_back(directory + "/" + filename);
+        }
+    }
+
+    closedir(dir);
+    return orcFiles;
+}
+
+template <typename T>
 void load_dat(T* data, const std::string& name, const std::string& dir, size_t n) {
     load_dat(data, name, dir, n, sizeof(T));
 };
 
+int getKeyLength(const std::string & key) {
+    auto it = TPCH_READ_KEY_LENGTH_MAP.find(key);
+    if (it != TPCH_READ_KEY_LENGTH_MAP.end()){
+        return it->second;
+    }
+    return TPCDS_READ_MAX;
+}
+
 class Table {
    public:
     std::string name;
+    std::string format;
     size_t nrow;
     size_t ncol;
     int npart;
@@ -152,6 +193,8 @@ class Table {
     std::vector<size_t> isrowid;
     std::vector<size_t> iskdata;
 
+    std::vector<std::string> tpchMoneyColumn = {"ss_net_profit","ss_net_paid_inc_tax", "ss_net_paid", "ss_coupon_amt", "ss_ext_tax", "ss_ext_list_price", "ss_ext_wholesale_cost", "ss_ext_sales_price", "ss_ext_discount_amt", "ss_list_price", "ss_sales_price", "o_totalprice", "c_acctbal", "p_retailprice", "s_acctbal", "ps_supplycost", "l_extendedprice", "l_tax", "l_discount", "sr_return_amt"};
+    std::vector<std::string> tpchCharColumn = {"o_orderstatus", "l_returnflag", "l_linestatus"};
     std::string dir;
 
     std::vector<size_t> size512;
@@ -173,6 +216,17 @@ class Table {
         mode = 2;
     };
 
+    Table(std::string name_, size_t nrow_, size_t ncol_, std::string dir_, std::string format_) {
+        name = name_;
+        nrow = nrow_;
+        ncol = ncol_;
+        npart = 1;
+        dir = dir_;
+        size512.push_back(0);
+        mode = 2;
+        format = format_;
+    };
+
     Table(size_t size) {
         size512.push_back(size / 64);
         mode = 3;
@@ -181,6 +235,7 @@ class Table {
     //! Add column
     void addCol(std::string columname, size_t width, int isrid = 0, int iskda = 1) {
         size_t depth = nrow + VEC_LEN * 2 - 1;
+        // the total size of one column
         size_t sizeonecol = size_t((width * depth + 64 - 1) / 64);
         size512.push_back(size512.back() + sizeonecol);
         colsname.push_back(columname);
@@ -196,19 +251,253 @@ class Table {
         for (size_t i = 0; i < ncol; i++) {
             // std::cout<<isrowid[i]<<std::endl;
             if (isrowid[i] == 0) {
-                // std::cout<<colsname[i]<<dir<<nrow<<colswidth[i]<<std::endl;
-                int err = load_dat(data + size512[i] + 1, colsname[i], dir, nrow, colswidth[i]);
-                if (err) {
-                    std::cout << "ERROR loading table from disk" << std::endl;
-                };
+                if (format=="orc") {
+                    std::cout << name << " " << colsname[i] << std::endl;
+                    loadORC(data + size512[i] + 1, name, colsname[i], dir, nrow, i);
+                } else {
+                    int err = load_dat(data + size512[i] + 1, colsname[i], dir, nrow, colswidth[i]);
+                    if (err) {
+                        std::cout << "ERROR loading table from disk" << std::endl;
+                    };
+                }
+                
             } else {
+                std::cout << name << " string row id " << colsname[i] << std::endl;
+
                 for (size_t j = 0; j < nrow; j++) {
                     setInt32(j, i, j);
                 }
             }
             memcpy(data + size512[i], &nrow, 4);
         };
+        
     };
+    template <typename T>
+    void loadORC(T*data, const std::string& tableName, const std::string& columnName, const std::string& dir, size_t nrow, size_t col_idx) {
+        std::vector<std::string> orcFiles = getOrcFiles(dir+"/"+tableName);
+        for (const std::string &filename : orcFiles) {
+            try {
+                // should be set in the class field member
+                orc::ReaderOptions reader_opts;
+                orc::RowReaderOptions row_reader_options;
+                std::unique_ptr<orc::RowReader> rowReader;
+                std::unique_ptr<orc::Reader> reader = orc::createReader(orc::readFile(filename), reader_opts);
+                const auto & schema = reader->getType();
+                rowReader = reader->createRowReader(row_reader_options);
+                size_t realColumnIdxInOrc;
+                for (size_t i = 0; i < schema.getSubtypeCount(); ++i){
+                    if (schema.getFieldName(i) == columnName) {
+                        realColumnIdxInOrc = i;
+                        break;
+                    }
+                }
+
+                const orc::Type * orc_type = schema.getSubtype(realColumnIdxInOrc);
+                std::list<uint64_t> include_columns = {static_cast<uint64_t>(realColumnIdxInOrc)};
+                row_reader_options.include(include_columns);
+                rowReader = reader->createRowReader(row_reader_options);
+                std::unique_ptr<orc::ColumnVectorBatch> batch = rowReader->createRowBatch(4092);
+                int count = 0;
+                while (rowReader->next(*batch)) {
+                    const auto * struct_batch = dynamic_cast<const orc::StructVectorBatch *>(batch.get());
+                    const auto * field = struct_batch->fields[0];
+                    switch (orc_type->getKind()){
+                        case orc::STRING: {
+                            const auto * orc_str_column = dynamic_cast<const orc::StringVectorBatch *>(field);
+                            if (orc_str_column) {
+                                for (size_t j = 0; j < orc_str_column->numElements; ++j) {
+                                    if (orc_str_column->notNull[j]) {
+                                        const auto * buf = orc_str_column->data[j];
+                                        if (std::find(tpchCharColumn.begin(), tpchCharColumn.end(), columnName) != tpchCharColumn.end()) {
+                                            uint32_t value = static_cast<int>(buf[0]);
+                                            memcpy((char*)(data) + count * sizeof(int), &value, sizeof(int));
+
+                                        } else {
+                                            long offset = (long)count * (getKeyLength(columnName) + 1)  * sizeof(char);
+                                            size_t buf_size = orc_str_column->length[j];
+                    
+                                            char temp_buf[buf_size+1];
+                                            memcpy(temp_buf, buf, buf_size);
+                                            temp_buf[buf_size] = '\0';
+                                            memcpy((char*)(data) + offset, temp_buf, buf_size+1);
+                                           
+                                           
+                                            
+                                        }
+                                        
+                                    } else {
+                                        long offset = (long)count * (getKeyLength(columnName) + 1)  * sizeof(char);
+                                        char temp_buf[5];
+                                        memcpy(temp_buf, "NULL", 4);
+                                        temp_buf[4] = '\0';
+                                        //std::cout.write(temp_buf, 4);
+                                        //std::cout << " " << std::endl;
+                                        memcpy((char*)(data) + offset, temp_buf, 5);
+                                    }
+                                    count++;
+                                }
+                            }
+                            break;
+                        }
+
+
+                        case orc::DECIMAL: {
+                                uint64_t scale = orc_type->getScale();
+                                const auto * orc_decimal_column = dynamic_cast<const orc::Decimal64VectorBatch *>(field);
+                                if (orc_decimal_column) {
+                                    for (size_t j = 0; j < orc_decimal_column->numElements; ++j) {
+                                        if ( orc_decimal_column->notNull[j]) {
+                                            uint32_t raw_value = orc_decimal_column->values[j]; // Fixed-point number
+                                            float float_value = static_cast<float>(raw_value) / std::pow(10.0, static_cast<float>(scale));
+                                           
+                                            if (std::find(tpchMoneyColumn.begin(), tpchMoneyColumn.end(), columnName) != tpchMoneyColumn.end()) {
+                                                uint32_t int_value = float_value * 100;
+                                                memcpy((char*)(data) + count * sizeof(int), &int_value, sizeof(int)); 
+                                            } else if (columnName == "l_quantity") {
+                                                uint32_t int_value = static_cast<int>(float_value);
+                                                memcpy((char*)(data) + count * sizeof(int), &int_value, sizeof(int)); 
+                                            } else {
+                                                memcpy((char*)(data) + count * sizeof(float), &float_value, sizeof(float)); 
+                                            }
+                                            
+                                            if (count<10) {
+                                                std::cout<< columnName << " " << raw_value << " " << float_value<< " "<<std::endl;
+                                            }
+                                            
+                                        } else {
+                                                uint32_t int_value = 0;
+                                                memcpy((char*)(data) + count * sizeof(int), &int_value, sizeof(int));
+                                        }
+                                        count++;
+
+                                    }
+                                }
+                                break;
+
+                            }
+
+                        // bigint
+                        case orc::LONG: {
+                            const auto * orc_long_column = dynamic_cast<const orc::LongVectorBatch *>(field);
+                            if (orc_long_column) {
+                                for (size_t j = 0; j < orc_long_column->numElements; ++j) {
+                                    if ( orc_long_column->notNull[j]) {
+                                        uint32_t raw_value = static_cast<uint32_t>(orc_long_column->data[j]);
+                                        memcpy((char*)(data) + count * sizeof(int), &raw_value, sizeof(int)); 
+                                        if (count<10) {
+                                            std::cout<<raw_value<<std::endl;
+                                        }
+                                    } else {
+                                        uint32_t raw_value = 0;
+                                        memcpy((char*)(data) + count * sizeof(int), &raw_value, sizeof(int)); 
+                                        
+                                    }
+                                    count++;
+
+                                }
+                            }
+                            break;
+                        }
+
+                        case orc::INT: {
+                            const auto * orc_int_column = dynamic_cast<const orc::LongVectorBatch *>(field);
+                            if (orc_int_column) {
+                                for (size_t j = 0; j < orc_int_column->numElements; ++j) {
+                                    if ( orc_int_column->notNull[j]) {
+                                        uint32_t raw_value = static_cast<uint32_t>(orc_int_column->data[j]);
+                                        memcpy((char*)(data) + count * sizeof(int), &raw_value, sizeof(int)); 
+                                        if (count<10) {
+                                            std::cout<<raw_value<<std::endl;
+                                        }
+                                    }else {
+                                        uint32_t raw_value = 0;
+                                        memcpy((char*)(data) + count * sizeof(int), &raw_value, sizeof(int)); 
+
+                                    }
+                                    count++;
+
+                                }
+                            }
+                            break;
+                        }
+
+                        case orc::DATE: {
+                            const auto * orc_int_column = dynamic_cast<const orc::LongVectorBatch *>(field);
+                            if (orc_int_column) {
+                                for (size_t j = 0; j < orc_int_column->numElements; ++j) {
+                                    if ( orc_int_column->notNull[j]) {
+                                        int64_t days_since_epoch = orc_int_column->data[j];
+                                        std::time_t epoch_offset = (days_since_epoch) * 24 * 60 * 60;
+
+                                        // transform（GMT) to tm struct
+                                        std::tm *ptm = std::gmtime(&epoch_offset);
+                                        if (ptm) {
+                                            int year = ptm->tm_year + 1900; 
+                                            int month = ptm->tm_mon + 1;
+                                            int day = ptm->tm_mday;
+                                            int32_t date_as_int = year * 10000 + month * 100 + day;
+                                            
+                                            memcpy((char*)(data) + count * sizeof(int32_t), &date_as_int, sizeof(int32_t)); 
+                                            if (count>nrow-10) {
+                                                std::cout<<"date: " << date_as_int<<std::endl;
+                                            }
+                                        } else {
+                                            std::cerr << "Failed to convert epoch time to tm structure" << std::endl;
+                                        }
+                                    } else {
+                                            int32_t date_as_int = 0;
+                                            
+                                            memcpy((char*)(data) + count * sizeof(int32_t), &date_as_int, sizeof(int32_t)); 
+                                    }
+                                    count++;
+
+                                }
+                            }                       
+                            break;
+                        }
+                        case orc::DOUBLE: {
+                            const auto * orc_double_column = dynamic_cast<const orc::DoubleVectorBatch *>(field);
+                            if (orc_double_column) {
+                                for (size_t j = 0; j < orc_double_column->numElements; ++j) {
+                                    if (orc_double_column->notNull[j]) {
+                                        float raw_value = static_cast<float>(orc_double_column->data[j]);
+                                        if (std::find(tpchMoneyColumn.begin(), tpchMoneyColumn.end(), columnName) != tpchMoneyColumn.end()) {
+                                            uint32_t int_value = raw_value * 100;
+                                            memcpy((char*)(data) + count * sizeof(int), &int_value, sizeof(int)); 
+                                        } else {
+                                            memcpy((char*)(data) + count * sizeof(float), &raw_value, sizeof(float)); 
+                                        }
+                                            
+                                  
+                                        if (count<10) {
+                                                std::cout<<columnName << " " << raw_value<< " " << std::endl;
+                                        }
+                                        //std::cout.write(buf, buf_size);
+                                        //std::cout << std::endl;
+                                    } else {
+                                        uint32_t int_value = 0;
+                                        memcpy((char*)(data) + count * sizeof(int), &int_value, sizeof(int)); 
+                                    }
+                                    count++;
+
+                                }
+                            }                        
+                            break;
+                        }
+                        default:
+                            std::cout<< "not supported data type " << orc_type->toString() <<  std::endl;
+
+                        }
+                    
+                }
+                std::cout << "read count" << count << std::endl;
+            } catch (std::exception& e) {
+                std::cerr << "Caught exception: " << e.what() << std::endl;
+            }
+        }
+        //const std::string filename = dir + "/" + tableName + "/part-00000-c18f9cf1-f410-423a-93a4-81fba5e2183a-c000.snappy.orc";
+    }
+
 
     //! CPU memory allocation
     void allocateHost() { // col added manually
@@ -271,7 +560,20 @@ class Table {
         long offset = (long)r * N * sizeof(T);
         memcpy((char*)(data + size512[l] + 1) + offset, array_.data(), N * sizeof(T));
     }
-    void setInt32(int r, int l, int d) { memcpy((char*)(data + size512[l] + 1) + r * sizeof(int), &d, sizeof(int)); };
+
+    template <class T, int N>
+    void setcharPtr(int r, int l, const char* ptr) {
+        long offset = (long)r * N * sizeof(T);
+        memcpy((char*)(data + size512[l] + 1) + offset, ptr, N * sizeof(T));
+    }
+
+    void setFloat(int row, int column, float f) {
+         memcpy((char*)(data + size512[column] + 1) + row * sizeof(float), &f, sizeof(float)); 
+    }
+    void setInt32(int r, int l, int d) {
+         memcpy((char*)(data + size512[l] + 1) + r * sizeof(int), &d, sizeof(int)); 
+    };
+  
     void setInt64(int r, int l, int64_t d) {
         long offset = (long)r * sizeof(int64_t);
         memcpy((char*)(data + size512[l] + 1) + offset, &d, sizeof(int64_t));
@@ -412,6 +714,27 @@ class Table {
         }
         return tout;
     }
+
+    void copyTableData(Table* dest_table) {
+        int cpNum = 0;
+        for (size_t i = 0; i < ncol; i++) {
+            if (iskdata[i] == 1) {
+                cpNum++;
+            }
+        }
+        size_t depth = nrow + VEC_LEN * 2 - 1;
+        size_t sizeonecol = size_t((4 * depth + 64 - 1) / 64);
+
+        size_t numBytes = 0;
+        if (getKdata()) {
+            numBytes = 64 * sizeonecol * cpNum;
+            memcpy((char*)dest_table->datak, (char*)datak, numBytes);
+        } else {
+            numBytes = 64 * size512.back();
+            memcpy((char*)dest_table->data, (char*)data, numBytes);
+        }
+    };
+
     void mergeSubTable(Table* tables, int num) {
         ap_uint<512>* datam = aligned_alloc<ap_uint<512> >(size512.back());
         int rownum = 0;
@@ -476,6 +799,16 @@ class Table {
 
     int mode;
 };
+
+bool isElementExistsInTable(Table & table, int32_t element) {
+    int nrow = table.getNumRow();
+    for (int i = 0 ; i < nrow; i++) {
+        if(element == table.getInt32(i, 0)) {
+            return true;
+        }
+    }
+    return false;
+}
 
 void gatherTable_col(Table& tin1, Table& tin2, Table& tout) {
     int nrow = tin1.getNumRow();

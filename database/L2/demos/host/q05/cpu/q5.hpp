@@ -21,7 +21,7 @@ void q5Join_r_n(Table& tin1, Table& tin2, Table& tout) {
     std::unordered_multimap<int32_t, int32_t> ht1;
     for (int i = 0; i < nrow1; i++) {
         std::array<char, TPCH_READ_REGION_LEN + 1> r_name = tin1.getcharN<char, TPCH_READ_REGION_LEN + 1>(i, 1);
-        if (!strcmp("ASIA", r_name.data())) {
+        if (!strcmp("AFRICA", r_name.data())) {
             // if(!strcmp("ASIA",r_name.data())){
             int32_t r_regionkey = tin1.getInt32(i, 0);
             ht1.insert(std::make_pair(r_regionkey, 0));
@@ -85,7 +85,7 @@ void q5Join_t2_o(Table& tin1, Table& tin2, Table& tout) {
         int32_t o_custkey = tin2.getInt32(i, 0);
         int32_t o_orderkey = tin2.getInt32(i, 1);
         int32_t o_orderdate = tin2.getInt32(i, 2);
-        if (o_orderdate >= 19940101 && o_orderdate < 19950101) {
+        if (o_orderdate >= 19930101 && o_orderdate < 19940101) {
             auto its = ht1.equal_range(o_custkey);
             auto it = its.first;
             while (it != its.second) {

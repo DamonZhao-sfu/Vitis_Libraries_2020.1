@@ -19,7 +19,7 @@ void q3FilterC(Table& tin, Table& tout) {
     for (int i = 0; i < nrow; ++i) {
         int32_t c_custkey = tin.getInt32(i, 0);
         std::array<char, TPCH_READ_MAXAGG_LEN + 1> c_mktsegment = tin.getcharN<char, TPCH_READ_MAXAGG_LEN + 1>(i, 1);
-        if (!strcmp(c_mktsegment.data(), "BUILDING")) {
+        if (!strcmp(c_mktsegment.data(), "MACHINERY")) {
             tout.setInt32(r, 0, c_custkey);
             ++r;
         }
@@ -141,7 +141,7 @@ void q3Join_C_O1(Table& tin1, Table& tin2, Table& tout) {
     int nrow2 = tin2.getNumRow();
     for (int i = 0; i < nrow2; ++i) {
         int o_orderdate = tin2.getInt32(i, 2);
-        if (o_orderdate < 19950315) {
+        if (o_orderdate < 19950307 && o_orderdate > 19950214) {
             int o_orderkey = tin2.getInt32(i, 0);
             int o_custkey = tin2.getInt32(i, 1);
             int o_shippriority = tin2.getInt32(i, 3);
@@ -187,7 +187,7 @@ void q3Join_C_O2(Table& tin1, Table& tin2, Table& tout) {
     int nrow2 = tin2.getNumRow();
     for (int i = 0; i < nrow2; ++i) {
         int l_shipdate = tin2.getInt32(i, 3);
-        if (l_shipdate > 19950315) {
+        if (l_shipdate > 19950307) {
             int l_orderkey = tin2.getInt32(i, 0);
             int l_extendedprice = tin2.getInt32(i, 1);
             int l_discount = tin2.getInt32(i, 2);

@@ -204,11 +204,17 @@ int main(int argc, const char* argv[]) {
         krnlstep[i] = krnlEngine(program, q, "gqeJoin");
     }
     /////// to add1: add kernel setip
+    // tbs[2] customer
     krnlstep[0].setup(th0, tbs[2], tk0, cfgcmds[0], buftmp);
+    // tbs[3] orders
     krnlstep[1].setup(tk0, tbs[3], tk1, cfgcmds[1], buftmp);
+    // tbs[4] lineitem
     krnlstep[2].setup(tk1, tbs[4], tk0, cfgcmds[2], buftmp);
+    // 
     krnlstep[3].setup(th1, tk0, tk1, cfgcmds[3], buftmp);
+    // tbs[6] supplier
     krnlstep[4].setup(tbs[6], tk1, tk0, cfgcmds[4], buftmp);
+    // tbs[1] nation
     krnlstep[5].setup(tbs[1], tk0, tk1, cfgcmds[5], buftmp);
 
     // transfer Engine
@@ -219,9 +225,9 @@ int main(int argc, const char* argv[]) {
         transout[i].setq(q);
     }
 
-    transin[0].add(&tbs[2]);
-    transin[0].add(&tbs[1]);
-    transin[0].add(&tbs[6]);
+    transin[0].add(&tbs[2]); //customer
+    transin[0].add(&tbs[1]); // nation
+    transin[0].add(&tbs[6]); //supplier
 
     for (int i = 0; i < NumSweep; i++) {
         transin[0].add(&(cfgcmds[i]));
@@ -252,14 +258,18 @@ int main(int argc, const char* argv[]) {
     struct timeval tv_r_0, tv_r_1, tv_r_2, tv_r_3;
     gettimeofday(&tv_r_s, 0);
     // step1 :r n-> t1
+    // region join nation, output th0
     q8Join_r_n(tbs[0], tbs[1], th0);
     gettimeofday(&tv_r_0, 0);
 
+    // (th0, tbs[2], tk0)
+    // output of joining nation and region join customer
     transin[0].add(&th0);
     transin[0].host2dev(0, nullptr, &(eventsh2d_write[0][0]));
     krnlstep[0].run(0, &(eventsh2d_write[0]), &(events[0][0]));
     //  q8Join_t1_c(th0,tbs[2],tk0);
 
+    // join orders 
     transin[1].add(&tbs[3]);
     transin[1].host2dev(0, &(eventsh2d_write[0]), &(eventsh2d_write[1][0]));
     events_grp[1].push_back(eventsh2d_write[1][0]);
@@ -267,6 +277,7 @@ int main(int argc, const char* argv[]) {
     krnlstep[1].run(0, &(events_grp[1]), &(events[1][0]));
 
     // step4 : t3 lineitems -> t4
+    // join lineitem
     transin[2].add(&(tbs[4]));
     transin[2].host2dev(0, &(eventsh2d_write[1]), &(eventsh2d_write[2][0]));
     events_grp[2].push_back(eventsh2d_write[2][0]);
@@ -274,16 +285,19 @@ int main(int argc, const char* argv[]) {
     krnlstep[2].run(0, &(events_grp[2]), &(events[2][0]));
     //  q8Join_t3_l(tk1,tbs[4],tk0);
 
+    // filter part, output to th1
     gettimeofday(&tv_r_1, 0);
     q8Filter_p(tbs[5], th1);
     gettimeofday(&tv_r_2, 0);
 
+    // part filtered result join joined lineitem result
     transin[3].add(&th1);
     transin[3].host2dev(0, &(eventsh2d_write[2]), &(eventsh2d_write[3][0]));
     events_grp[3].push_back(eventsh2d_write[3][0]);
     events_grp[3].push_back(events[2][0]);
     krnlstep[3].run(0, &(events_grp[3]), &(events[3][0]));
 
+    // supplier join 
     // step5 : supplier t6 -> t7
     krnlstep[4].run(0, &(events[3]), &(events[4][0]));
     //  q8Join_s_t6(tbs[6],tk1,tk0);

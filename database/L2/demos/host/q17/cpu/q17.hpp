@@ -42,7 +42,7 @@ void PartFilter(Table& tin, Table& tout) {
     for (int i = 0; i < nrow; i++) {
         std::array<char, TPCH_READ_P_BRND_LEN + 1> p_brand = tin.getcharN<char, TPCH_READ_P_BRND_LEN + 1>(i, 1);
         std::array<char, TPCH_READ_P_CNTR_LEN + 1> p_container = tin.getcharN<char, TPCH_READ_P_CNTR_LEN + 1>(i, 2);
-        if (!strcmp(p_container.data(), "MED BOX") && !strcmp(p_brand.data(), "Brand#23")) {
+        if (!strcmp(p_container.data(), "WRAP BAG") && !strcmp(p_brand.data(), "Brand#21")) {
             int32_t p_partkey = tin.getInt32(i, 0);
             tout.setInt32(r, 0, p_partkey);
             r++;

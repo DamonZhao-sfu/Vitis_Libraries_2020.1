@@ -20,6 +20,7 @@
 #include <istream>
 #include <ostream>
 #include <vector>
+#include <unordered_map>
 
 #include <stdint.h>
 typedef int32_t TPCH_INT;
@@ -27,7 +28,7 @@ typedef int32_t TPCH_INT;
 #define TPCH_READ_PHONE_LEN 15
 #define TPCH_READ_C_NAME_LEN 18
 #define TPCH_READ_C_ADDR_MAX 40
-#define TPCH_READ_MAXAGG_LEN 20
+#define TPCH_READ_MAXAGG_LEN 50
 #define TPCH_READ_C_CMNT_MAX 117
 #define TPCH_READ_DATE_LEN 13
 #define TPCH_READ_O_CLRK_LEN 15
@@ -82,6 +83,40 @@ typedef int32_t TPCH_INT;
  * operator >> will overwrite its data from the begining and stop when it's fullfilled or runout of data.
  * "long count" will equals to "long volumn" or num of records.
  * */
+
+std::unordered_map<std::string, int> TPCH_READ_KEY_LENGTH_MAP = {
+    {"c_phone", TPCH_READ_PHONE_LEN},
+    {"c_name", TPCH_READ_C_NAME_LEN},
+    {"c_address", TPCH_READ_C_ADDR_MAX},
+    {"c_comment", TPCH_READ_C_CMNT_MAX},
+    {"c_mktsegment", TPCH_READ_MAXAGG_LEN},
+    {"o_clerk", TPCH_READ_O_CLRK_LEN},
+    {"o_comment", TPCH_READ_O_CMNT_MAX},
+    {"o_orderpriority", TPCH_READ_MAXAGG_LEN},
+    {"l_comment", TPCH_READ_L_CMNT_MAX},
+    {"l_shipinstruct", TPCH_READ_MAXAGG_LEN},
+    {"l_shipmode", TPCH_READ_MAXAGG_LEN},
+    {"n_name", TPCH_READ_NATION_LEN},
+    {"n_comment", TPCH_READ_N_CMNT_MAX},
+    {"r_name", TPCH_READ_REGION_LEN},
+    {"r_comment", TPCH_READ_R_CMNT_MAX},
+    {"ps_comment", TPCH_READ_PS_CMNT_MAX},
+    {"s_name", TPCH_READ_S_NAME_LEN},
+    {"s_phone", TPCH_READ_PHONE_LEN},
+    {"s_address", TPCH_READ_S_ADDR_MAX},
+    {"s_comment", TPCH_READ_S_CMNT_MAX},
+    {"p_name", TPCH_READ_P_NAME_LEN},
+    {"p_mfgr", TPCH_READ_P_MFG_LEN},
+    {"p_brand", TPCH_READ_P_BRND_LEN},
+    {"p_type", TPCH_READ_P_TYPE_LEN},
+    {"p_container", TPCH_READ_P_CNTR_LEN},
+    {"p_comment", TPCH_READ_P_CMNT_MAX}
+   /*{"s_state", 2},
+    {"c_customer_id", 16},
+    {"d_date_id", 16},
+    {"s_store_id", 16}*/
+    // ... more entries if needed
+};
 
 class d_long {
    public:

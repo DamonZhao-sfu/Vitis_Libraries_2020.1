@@ -32,7 +32,10 @@ void OrderFilter(Table& tin, Table& tout) {
     for (int i = 0; i < nrow; i++) {
         std::array<char, TPCH_READ_O_CMNT_MAX + 1> o_comment = tin.getcharN<char, TPCH_READ_O_CMNT_MAX + 1>(i, 2);
         // if(!std::regex_match(o_comment.data(), std::regex("(.*)(special)(.*)(requests)(.*)"))){
-        if (!strm_pattern("special", "requests", o_comment.data())) {
+        if (i<1000) {
+            std::cout<< o_comment.data() << std::endl;
+        }
+        if (!strm_pattern("unusual", "deposits", o_comment.data())) {
             int32_t o_custkey = tin.getInt32(i, 0);
             int32_t o_orderkey = tin.getInt32(i, 1);
             tout.setInt32(r, 0, o_custkey);

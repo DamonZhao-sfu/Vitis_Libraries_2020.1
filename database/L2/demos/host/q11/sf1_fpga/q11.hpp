@@ -19,7 +19,7 @@ void NationFilter(Table& tin, Table& tout) {
     int r = 0;
     for (int i = 0; i < nrow; i++) {
         std::array<char, TPCH_READ_NATION_LEN + 1> n_name = tin.getcharN<char, TPCH_READ_NATION_LEN + 1>(i, 1);
-        if (!strcmp("GERMANY", n_name.data())) {
+        if (!strcmp("IRAN", n_name.data())) {
             int32_t n_nationkey = tin.getInt32(i, 0);
             tout.setInt32(r, 0, n_nationkey);
             // tout.setcharN<char,TPCH_READ_NATION_LEN + 1>(r,1,n_name);

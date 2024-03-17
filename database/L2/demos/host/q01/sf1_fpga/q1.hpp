@@ -19,7 +19,7 @@ void q1FilterL(Table& tin, Table& tout) {
     int nrow = tin.getNumRow();
     for (int i = 0; i < nrow; ++i) {
         int32_t l_shipdate = tin.getInt32(i, 6);
-        // if(i<10) std::cout<<std::dec<<l_shipdate<<std::endl;
+        if(i<10) std::cout<<std::dec<<l_shipdate<<std::endl;
         if (l_shipdate <= 19980902) {
             int32_t l_returnflag = tin.getInt32(i, 0);
             int32_t l_linestatus = tin.getInt32(i, 1);
@@ -27,6 +27,9 @@ void q1FilterL(Table& tin, Table& tout) {
             int32_t l_extendedprice = tin.getInt32(i, 3);
             int32_t l_discount = tin.getInt32(i, 4);
             int32_t l_tax = tin.getInt32(i, 5);
+            if (i<20) {
+                std::cout << l_returnflag << " " << l_linestatus << " " << l_quantity << " " << l_extendedprice << " " << l_discount << " " << l_tax << std::endl;
+            }
             tout.setInt32(r, 0, l_returnflag);
             tout.setInt32(r, 1, l_linestatus);
             tout.setInt32(r, 2, l_quantity);
