@@ -22,6 +22,7 @@
 #include <fstream>
 #include <string>
 #include <orc/OrcFile.hh>
+#include <arrow/api.h>
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -320,9 +321,7 @@ class Table {
                                             memcpy(temp_buf, buf, buf_size);
                                             temp_buf[buf_size] = '\0';
                                             memcpy((char*)(data) + offset, temp_buf, buf_size+1);
-                                           
-                                           
-                                            
+                                                                     
                                         }
                                         
                                     } else {

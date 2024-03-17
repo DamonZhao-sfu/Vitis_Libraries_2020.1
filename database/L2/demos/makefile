@@ -21,7 +21,8 @@ MK_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
 CUR_DIR := $(patsubst %/,%,$(dir $(MK_PATH)))
 CUR_DIR ?= $(CUR_DIR)
 ORC_INSTALL_DIR := /localhdd/hza215/orc/ORC-1.9.0-SNAPSHOT-Linux
-
+ARROW_INCLUDE_DIR := /localhdd/hza215/bin/include
+ARROW_INSTALL_DIR := /localhdd/hza215/bin/lib
 .SECONDEXPANSION:
 
 # -----------------------------------------------------------------------------
@@ -668,6 +669,7 @@ test_q23_EXTRA_HDRS += $(SRC_DIR)/q23.hpp
 
 CXXFLAGS += -D XDEVICE=$(XDEVICE) -I$(XFLIB_DIR)/L1/include/hw -I$(XFLIB_DIR)/L3/include/sw -I$(JNI_INCLUDE) -I$(JNI_INCLUDE)/linux/ -I$(SRC_BASE_DIR) -g 
 CXXFLAGS += -I$(ORC_INSTALL_DIR)/include
+CXXFLAGS += -I$(ARROW_INCLUDE_DIR)
 # EXTRA_OBJS is cannot be compiled from SRC_DIR, user should provide the rule
 EXTRA_OBJS += xcl2
 
@@ -676,6 +678,7 @@ xcl2_SRCS = $(EXT_DIR)/xcl2/xcl2.cpp
 xcl2_HDRS = $(EXT_DIR)/xcl2/xcl2.hpp
 xcl2_CXXFLAGS = -I$(EXT_DIR)/xcl2
 CXXFLAGS += $(xcl2_CXXFLAGS)
+
 
 .PHONY: debugvar
 debugvar:
@@ -696,7 +699,7 @@ BIN_DIR_SUFFIX ?= _$(XDEVICE)
 OBJ_DIR = $(CUR_DIR)/$(OBJ_DIR_BASE)$(BIN_DIR_SUFFIX)
 BIN_DIR = $(CUR_DIR)/$(BIN_DIR_BASE)$(BIN_DIR_SUFFIX)
 
-CXXFLAGS += -std=c++14 -O2 -g -w -fPIC \
+CXXFLAGS += -std=c++17 -O2 -g -w -fPIC \
 	-I$(SRC_DIR) -I$(XILINX_XRT)/include -I$(XILINX_VIVADO)/include \
 	-Wall -Wno-unknown-pragmas -Wno-unused-label -pthread
 # CFLAGS +=
@@ -704,7 +707,7 @@ LDFLAGS += -pthread -L$(XILINX_XRT)/lib -lxilinxopencl
 LDFLAGS += -L$(XILINX_VIVADO)/lnx64/tools/fpo_v7_0 -Wl,--as-needed -lgmp -lmpfr \
 	   -lIp_floating_point_v7_0_bitacc_cmodel
 LDFLAGS += -L$(ORC_INSTALL_DIR)/lib -lorc -lprotobuf -lsnappy -lz -llz4 -lzstd
-
+LDFLAGS += -L$(ARROW_INSTALL_DIR) -larrow
 OBJ_FILES = $(foreach s,$(SRCS),$(OBJ_DIR)/$(basename $(s)).o)
 
 define host_hdr_dep
@@ -734,7 +737,7 @@ EXE_FILE ?= $(BIN_DIR)/$(EXE_NAME)$(if $(EXE_EXT),.,)$(EXE_EXT)
 $(EXE_FILE): $(OBJ_FILES) $(EXTRA_OBJ_FILES) | check_vpp check_xrt check_platform
 	@echo -e "----\nCompiling host $(notdir $@)..."
 	mkdir -p $(BIN_DIR)
-	$(CXX) -o $@ $^ $(CXXFLAGS) $(LDFLAGS) 
+	$(CXX) -o $@ $^ $(CXXFLAGS) $(LDFLAGS) $(LDLIBS)
 
 .PHONY: host
 host: check_vpp check_xrt check_platform $(EXE_FILE)
