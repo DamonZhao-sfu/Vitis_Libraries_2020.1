@@ -128,9 +128,22 @@ int main(int argc, const char* argv[]) {
     struct timeval tv_r_s, tv_r_e; 
     gettimeofday(&tv_r_s, 0); 
 
+    struct timeval convert_s, convert_e;
+    gettimeofday(&convert_s, 0);
+    auto recordBatch = tbl_SerializeFromObject_TD_7969555_input.convertToRecordBatch();
+    gettimeofday(&convert_e, 0);
+    std::cout << std::endl << " Total execution time for converting to recordBatch: " << tvdiff(&convert_s, &convert_e) / 1000 << " ms"; 
+
+    //std::cout << "recordBatch" << recordBatch->ToString() << std::endl;
+    struct timeval convert_s_1, convert_e_1;
+    gettimeofday(&convert_s_1, 0);
+    auto tbl = covertFromArrowRecordBatchToTable(*recordBatch);
+    gettimeofday(&convert_e_1, 0);
+    std::cout << std::endl << " Total execution time for converting to table: " << tvdiff(&convert_s_1, &convert_e_1) / 1000 << " ms"; 
+
     struct timeval tv_r_Filter_6_157361_s, tv_r_Filter_6_157361_e;
     gettimeofday(&tv_r_Filter_6_157361_s, 0);
-    SW_Filter_TD_6107427(tbl_SerializeFromObject_TD_7969555_input, tbl_Filter_TD_6107427_output);
+    SW_Filter_TD_6107427(*tbl, tbl_Filter_TD_6107427_output);
     gettimeofday(&tv_r_Filter_6_157361_e, 0);
 
     struct timeval tv_r_Filter_6_892333_s, tv_r_Filter_6_892333_e;
@@ -147,6 +160,7 @@ int main(int argc, const char* argv[]) {
     gettimeofday(&tv_r_JOIN_INNER_5_428469_s, 0);
     SW_JOIN_INNER_TD_5269686(tbl_Filter_TD_6966126_output, tbl_Filter_TD_6107427_output, tbl_JOIN_INNER_TD_5269686_output);
     gettimeofday(&tv_r_JOIN_INNER_5_428469_e, 0);
+
 
     struct timeval tv_r_JOIN_INNER_4_766090_s, tv_r_JOIN_INNER_4_766090_e;
     gettimeofday(&tv_r_JOIN_INNER_4_766090_s, 0);
@@ -175,11 +189,7 @@ int main(int argc, const char* argv[]) {
 
     gettimeofday(&tv_r_e, 0); 
 
-    auto recordBatch = tbl_JOIN_INNER_TD_5269686_output.convertToRecordBatch();
-    std::cout << "recordBatch" << recordBatch->ToString() << std::endl;
-    auto tbl = covertFromArrowRecordBatchToTable(*recordBatch);
-    auto convertedBatch = tbl->convertToRecordBatch();
-    std::cout << "convertedBatch" << convertedBatch->ToString() << std::endl;
+
 
     // **************************** Print Execution Time ************************** // 
     std::cout << "Filter_6: " << tvdiff(&tv_r_Filter_6_157361_s, &tv_r_Filter_6_157361_e) / 1000.0 << " ms " 

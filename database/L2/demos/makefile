@@ -702,9 +702,9 @@ BIN_DIR = $(CUR_DIR)/$(BIN_DIR_BASE)$(BIN_DIR_SUFFIX)
 
 CXXFLAGS += -std=c++17 -O2 -g -w -fPIC \
 	-I$(SRC_DIR) -I$(XILINX_XRT)/include -I$(XILINX_VIVADO)/include \
-	-Wall -Wno-unknown-pragmas -Wno-unused-label -pthread
+	-Wall -Wno-unknown-pragmas -Wno-unused-label -pthread -mavx512f 
 # CFLAGS +=
-LDFLAGS += -pthread -L$(XILINX_XRT)/lib -lxilinxopencl
+LDFLAGS += -pthread -L$(XILINX_XRT)/lib -lxilinxopencl 
 LDFLAGS += -L$(XILINX_VIVADO)/lnx64/tools/fpo_v7_0 -Wl,--as-needed -lgmp -lmpfr \
 	   -lIp_floating_point_v7_0_bitacc_cmodel
 #LDFLAGS += -L$(GCC_INSTALL_DIR) -Wl,-rpath=$(GCC_INSTALL_DIR)

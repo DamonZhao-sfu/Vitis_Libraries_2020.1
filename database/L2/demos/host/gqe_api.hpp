@@ -23,6 +23,7 @@
 #include <string>
 #include <orc/OrcFile.hh>
 #include <arrow/api.h>
+#include <arrow/status.h>
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -30,6 +31,8 @@
 #include <cstdio>
 #include <dirent.h>
 #include "tpch_read_2.hpp"
+#include <immintrin.h>
+
 #endif
 #ifndef _GQE_API_
 #define _GQE_API_
@@ -250,11 +253,12 @@ class Table {
         mode = 1;
     };
 
-
+    // Table to Arrow RecordBatch
     std::shared_ptr<arrow::RecordBatch> convertToRecordBatch() {
         arrow::MemoryPool* pool = arrow::default_memory_pool();
         std::vector<std::shared_ptr<arrow::Field>> fields;
         std::vector<std::shared_ptr<arrow::ArrayBuilder>> builders; // Array builders for different column types.
+        std::vector<std::shared_ptr<arrow::Array>> arrays;
 
         for (size_t i = 0; i < ncol; ++i) {
             if (mode == 1) {
@@ -262,54 +266,94 @@ class Table {
                 switch (colstype[i]) {
                     case ColumnType::INT32: {
                         fields.push_back(arrow::field(colname, arrow::int32()));
-                        builders.push_back(std::make_shared<arrow::Int32Builder>());
+                        auto builder = std::make_shared<arrow::Int32Builder>();
+                        builder->Reset();
+                        
+                        // version 1: AppendValues
+                        /*const int32_t* column_data = reinterpret_cast<const int32_t*>(
+                            reinterpret_cast<const char*>(data) + size512[i] + 1);
+                        arrow::Status status = builder->AppendValues(column_data, nrow);
+                        if (!status.ok()) {
+                            std::cerr << "Error appending values: " << status.message() << std::endl;
+                        }*/
+
+                        // version 2: SIMD Programming
+                        /*const int batchSize = 16; // Number of int32_t values per AVX-512 batch
+                        int32_t batchValues[batchSize];
+                        int fullBatches = nrow / batchSize;
+                        for (int j = 0; j < fullBatches * batchSize; j += batchSize) {
+                            size_t offset = size512[i] + 1 + j * sizeof(int32_t);
+                            getInt32Batch((char*)data, offset, batchValues);
+                            for (int k = 0; k<batchSize;k++){
+                                if(j+k<256) {
+                                    std::cout<< batchValues[k] << std::endl;
+                                }
+                            }
+                            //for (int k = 0 ; k<batchSize; k++) {
+                                //std::cout << batchValues[k] << std::endl;
+                            //    builder->Append(batchValues[k]);
+                            //}
+                           // arrow::Status status = builder->AppendValues(batchValues, batchSize);
+                           // if (!status.ok()) {
+                                // Handle the error appropriately
+                          //  }
+                        }  
+                        int remainingElements = nrow % batchSize;
+                        for (int j = nrow-remainingElements; j < nrow; j++) {
+                            std::cout << "remain:" << getInt32(j, i) << std::endl;
+                            //arrow::Status status = builder->Append(getInt32(j, i));
+                            //if (!status.ok()) {
+                            //    // Handle the error appropriately
+                           // }
+                        }*/
+                        // version 3: for loop
+                        for (int j = 0 ; j < nrow; j++) {
+                            arrow::Status status = builder->Append(getInt32(j, i));
+                           
+                            if (!status.ok()) {
+                                // Handle the error appropriately
+                            }
+                        }
+
+                        std::shared_ptr<arrow::Array> array;
+                        builder->Finish(&array);
+                        arrays.push_back(array);
                         break;
                     }
                     case ColumnType::STRING: {
                         fields.push_back(arrow::field(colname, arrow::utf8()));
-                        builders.push_back(std::make_shared<arrow::StringBuilder>());
+                        auto builder = std::make_shared<arrow::StringBuilder>();
+                        builder->Reset();
+                      
+                       // long offset = (long)r * N * sizeof(T);
+                       // memcpy(arr.data(), (char*)(data + size512[l] + 1) + offset, N * sizeof(T));
+                        for (int j = 0; j < nrow; j++) {
+                            builder->Append(getcharN<char, TPCDS_READ_MAX + 1>(j, i).data());
+                        }                     
+                        std::shared_ptr<arrow::Array> array;
+                        builder->Finish(&array);
+                        arrays.push_back(array);   
                         break;
                     }                    
                     // Add more types as necessary.
                 }
             } else if (mode == 2) {
                 fields.push_back(arrow::field(std::to_string(i), arrow::int32()));
-                builders.push_back(std::make_shared<arrow::Int32Builder>());
+                auto builder = std::make_shared<arrow::Int32Builder>();
+                builder->Reset();
+                for (int j = 0; j < nrow; j++) {
+                    builder->Append(getInt32(j, i));
+                }    
+                std::shared_ptr<arrow::Array> array;
+                builder->Finish(&array);
+                arrays.push_back(array);  
             }
         }
         auto schema = arrow::schema(fields);
-        std::vector<std::shared_ptr<arrow::Array>> arrays;
-        for (size_t i = 0; i < builders.size(); ++i) {
-            auto& builder = builders[i];
-            builder->Reset();
-            for (int j = 0; j < nrow; j++) {
-                if (mode == 1) {
-                    switch (colstype[i]) {
-                        case ColumnType::INT32: {
-                            auto typed_builder = std::static_pointer_cast<arrow::Int32Builder>(builder);
-                            typed_builder->Append(getInt32(j, i));
-                            break;
-                        }
-                        case ColumnType::STRING: {
-                            auto typed_builder = std::static_pointer_cast<arrow::StringBuilder>(builder);
-                            typed_builder->Append(getcharN<char, TPCDS_READ_MAX + 1>(j, i).data()); // Assume you have a getString function.
-                            break;
-                        }
-                        // Add more types as necessary.
-                    }
-                } else if (mode == 2) {
-                    auto typed_builder = std::static_pointer_cast<arrow::Int32Builder>(builder);
-                    typed_builder->Append(getInt32(j, i));
-                }
-            }
-            std::shared_ptr<arrow::Array> array;
-            builder->Finish(&array);
-            arrays.push_back(array);
-        }
         return arrow::RecordBatch::Make(schema, nrow, arrays);
     }
 
-    std::shared_ptr<arrow::Table> convertToArrowTable() {
+    /*std::shared_ptr<arrow::Table> convertToArrowTable() {
         std::vector<std::shared_ptr<arrow::Field>> fields;
         std::vector<std::shared_ptr<arrow::ArrayBuilder>> builders; // Array builders for different column types.
 
@@ -334,36 +378,34 @@ class Table {
         for (size_t i = 0; i < builders.size(); ++i) {
             auto& builder = builders[i];
             builder->Reset();
-            for (int j = 0; j < nrow; j++) {
-                switch (colstype[i]) {
-                    case ColumnType::INT32: {
-                        auto typed_builder = std::static_pointer_cast<arrow::Int32Builder>(builder);
+            switch (colstype[i]) {
+                case ColumnType::INT32: {
+                    auto typed_builder = std::static_pointer_cast<arrow::Int32Builder>(builder);
+                    for (int j = 0; j < nrow; j++) {
                         typed_builder->Append(getInt32(j, i));
-                        break;
                     }
-                    case ColumnType::STRING: {
-                        auto typed_builder = std::static_pointer_cast<arrow::StringBuilder>(builder);
+                    break;
+                }
+                case ColumnType::STRING: {
+                    auto typed_builder = std::static_pointer_cast<arrow::StringBuilder>(builder);
+                    for (int j = 0; j < nrow; j++) {
                         typed_builder->Append(getcharN<char, TPCDS_READ_MAX + 1>(j, i).data()); // Assume you have a getString function.
-                        break;
                     }
-                    // Add more types as necessary.
+                    break;
                 }
             }
-
             std::shared_ptr<arrow::Array> array;
             builder->Finish(&array);
             auto chunked_array = std::make_shared<arrow::ChunkedArray>(array);
             chunkedArrays.push_back(chunked_array);
         }
         return arrow::Table::Make(schema, chunkedArrays);
-    }
+    }*/
 
 
     //! Load table to CPU memory
     void loadHost() {
-        // std::cout<<"load host"<<std::endl;
         for (size_t i = 0; i < ncol; i++) {
-            // std::cout<<isrowid[i]<<std::endl;
             if (isrowid[i] == 0) {
                 if (format=="orc") {
                     std::cout << name << " " << colsname[i] << std::endl;
@@ -377,7 +419,6 @@ class Table {
                 
             } else {
                 std::cout << name << " string row id " << colsname[i] << std::endl;
-
                 for (size_t j = 0; j < nrow; j++) {
                     setInt32(j, i, j);
                 }
@@ -709,6 +750,21 @@ class Table {
         memcpy(&d, (char*)(data + size512[l] + 1) + r * sizeof(int), sizeof(int));
         return d;
     };
+    void getInt32Batch(char* data, size_t offset, int32_t* dest) {
+        
+        const int32_t* src = reinterpret_cast<const int32_t*>(
+            reinterpret_cast<const char*>(data) + offset);
+        __m512i values = _mm512_loadu_si512(reinterpret_cast<const __m512i*>(src));
+        _mm512_storeu_si512(reinterpret_cast<__m512i*>(dest), values);
+
+        // Load data into AVX-512 register (unaligned load)
+        //__m512i values = _mm512_loadu_si512(reinterpret_cast<const __m512i*>(data + offset));
+
+        // Optionally perform some vectorized operations on 'values'
+
+        // Store the data from the AVX-512 register into the destination array (unaligned store)
+        //_mm512_storeu_si512(reinterpret_cast<__m512i*>(dest), values);
+    }
     int64_t getInt64(int r, int l) {
         int64_t d;
         long offset = (long)r * sizeof(int64_t);
@@ -1294,6 +1350,7 @@ std::shared_ptr<Table> covertFromArrowRecordBatchToTable(const arrow::RecordBatc
     auto tbl = std::make_shared<Table>("tmp", nrow, ncol, "", "arrow");
     size_t depth = nrow + VEC_LEN * 2 - 1;
 
+    // add column
     for (int i = 0; i < ncol; i++) {
          switch (schema->field(i)->type()->id()) {
             case arrow::Type::INT32: {
@@ -1323,11 +1380,11 @@ std::shared_ptr<Table> covertFromArrowRecordBatchToTable(const arrow::RecordBatc
 
     tbl->allocateHost();
 
+    // load data from arrow to table
     for (int i = 0; i < ncol; i++) {
         std::shared_ptr<arrow::Array> column = recordBatch.column(i);
         switch (schema->field(i)->type()->id()) {
             case arrow::Type::INT32: {
-            
                 // Cast column to the correct type
                 auto int32_column = std::static_pointer_cast<arrow::Int32Array>(column);
                 // Copy the data from the Arrow array to Table's data buffer
@@ -1372,5 +1429,45 @@ std::shared_ptr<Table> covertFromArrowRecordBatchToTable(const arrow::RecordBatc
     return tbl;
 }
 
+void PrintFirstNRowsOfRecordBatch(const std::shared_ptr<arrow::RecordBatch>& recordBatch, int numRowsToPrint) {
+    // Determine the number of rows to print, which is the minimum of numRowsToPrint and the actual number of rows in the batch
+    int num_rows = numRowsToPrint;
+
+    // Iterate over all columns
+    for (int col = 0; col < recordBatch->num_columns(); ++col) {
+        auto column = recordBatch->column(col);
+        auto field = recordBatch->schema()->field(col);
+
+        // Print column name
+        std::cout << "Column " << col << " (" << field->name() << "):" << std::endl;
+
+        // Iterate over the first N rows
+        for (int row = 0; row < num_rows; ++row) {
+            // Print the value at the current row for this column
+            // Note: ValueAsString will handle the conversion to string based on the data type
+            std::ostringstream oss;
+
+            // Switch on data type
+            switch (field->type()->id()) {
+                case arrow::Type::INT32: {
+                    auto int_array = std::static_pointer_cast<arrow::Int32Array>(column);
+                    oss << int_array->Value(row);
+                    break;
+                }
+                // Add cases for other data types you expect to handle
+                // ...
+                default:
+                    oss << "Unsupported data type";
+                    break;
+            }
+
+            // Print the value at the current row for this column
+            std::cout << "Row " << row << ": " << oss.str() << std::endl;
+        }
+
+        // Add a separator between columns for readability
+        std::cout << std::endl;
+    }
+}
 
 #endif
