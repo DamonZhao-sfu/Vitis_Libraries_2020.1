@@ -16,7 +16,6 @@ const int PU_NM = 8;
 #include "tpch_read_2.hpp" 
 #include "tpcds_read.hpp" 
 #include "gqe_api.hpp" 
-
 #include "cfgFunc_q99.hpp" 
 #include "q99.hpp" 
 
@@ -236,6 +235,9 @@ int main(int argc, const char* argv[]) {
     gettimeofday(&tv_r_GlobalLimit_0_446400_s, 0);
     SW_GlobalLimit_TD_0227526(tbl_LocalLimit_TD_1349029_output, tbl_GlobalLimit_TD_0227526_output);
     gettimeofday(&tv_r_GlobalLimit_0_446400_e, 0);
+
+    
+
 
     gettimeofday(&tv_r_e, 0); 
     // **************************** Print Execution Time ************************** // 

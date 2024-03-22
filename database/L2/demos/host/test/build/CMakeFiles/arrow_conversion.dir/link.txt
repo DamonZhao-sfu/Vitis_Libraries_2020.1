@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/arrow_conversion.dir/arrow_conversion.cpp.o -o arrow_conversion  -Wl,-rpath,/localhdd/hza215/bin/lib /localhdd/hza215/bin/lib/libarrow.so.1500.0.0 

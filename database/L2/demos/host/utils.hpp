@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cctype>
 
+
 template <typename T>
 T* aligned_alloc(std::size_t num) {
     void* ptr = NULL;

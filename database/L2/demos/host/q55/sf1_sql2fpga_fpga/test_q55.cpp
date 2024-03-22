@@ -99,17 +99,17 @@ int main(int argc, const char* argv[]) {
     tbl_Filter_TD_6107427_output.allocateHost();
     Table tbl_SerializeFromObject_TD_6861241_input;
     tbl_SerializeFromObject_TD_6861241_input = Table("item", item_n, 4, in_dir, "orc");
-    tbl_SerializeFromObject_TD_6861241_input.addCol("i_item_sk", 4);
-    tbl_SerializeFromObject_TD_6861241_input.addCol("i_brand_id", 4);
-    tbl_SerializeFromObject_TD_6861241_input.addCol("i_brand", TPCDS_READ_MAX+1);
-    tbl_SerializeFromObject_TD_6861241_input.addCol("i_manager_id", 4);
+    tbl_SerializeFromObject_TD_6861241_input.addCol("i_item_sk", 4, 0, 1, ColumnType::INT32);
+    tbl_SerializeFromObject_TD_6861241_input.addCol("i_brand_id", 4, 0, 1, ColumnType::INT32);
+    tbl_SerializeFromObject_TD_6861241_input.addCol("i_brand", TPCDS_READ_MAX+1, 0, 1, ColumnType::STRING);
+    tbl_SerializeFromObject_TD_6861241_input.addCol("i_manager_id", 4, 0,1 ,ColumnType::INT32);
     tbl_SerializeFromObject_TD_6861241_input.allocateHost();
     tbl_SerializeFromObject_TD_6861241_input.loadHost();
     Table tbl_SerializeFromObject_TD_7200129_input;
     tbl_SerializeFromObject_TD_7200129_input = Table("date_dim", date_dim_n, 3, in_dir, "orc");
-    tbl_SerializeFromObject_TD_7200129_input.addCol("d_date_sk", 4);
-    tbl_SerializeFromObject_TD_7200129_input.addCol("d_moy", 4);
-    tbl_SerializeFromObject_TD_7200129_input.addCol("d_year", 4);
+    tbl_SerializeFromObject_TD_7200129_input.addCol("d_date_sk", 4, 0, 1, ColumnType::INT32);
+    tbl_SerializeFromObject_TD_7200129_input.addCol("d_moy", 4, 0, 1, ColumnType::INT32);
+    tbl_SerializeFromObject_TD_7200129_input.addCol("d_year", 4, 0, 1, ColumnType::INT32);
     tbl_SerializeFromObject_TD_7200129_input.allocateHost();
     tbl_SerializeFromObject_TD_7200129_input.loadHost();
     Table tbl_SerializeFromObject_TD_7969555_input;
@@ -174,6 +174,13 @@ int main(int argc, const char* argv[]) {
     gettimeofday(&tv_r_GlobalLimit_0_821050_e, 0);
 
     gettimeofday(&tv_r_e, 0); 
+
+    auto recordBatch = tbl_JOIN_INNER_TD_5269686_output.convertToRecordBatch();
+    std::cout << "recordBatch" << recordBatch->ToString() << std::endl;
+    auto tbl = covertFromArrowRecordBatchToTable(*recordBatch);
+    auto convertedBatch = tbl->convertToRecordBatch();
+    std::cout << "convertedBatch" << convertedBatch->ToString() << std::endl;
+
     // **************************** Print Execution Time ************************** // 
     std::cout << "Filter_6: " << tvdiff(&tv_r_Filter_6_157361_s, &tv_r_Filter_6_157361_e) / 1000.0 << " ms " 
      << "tbl_SerializeFromObject_TD_7969555_input: " << tbl_SerializeFromObject_TD_7969555_input.getNumRow() << " " << std::endl; 

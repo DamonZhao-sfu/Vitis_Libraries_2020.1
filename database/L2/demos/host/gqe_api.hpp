@@ -56,6 +56,8 @@
 #define XCL_BANK14 XCL_BANK(14)
 #define XCL_BANK15 XCL_BANK(15)
 
+enum class ColumnType { INT32, STRING };
+
 
 long getkrltime(cl::Event e1, cl::Event e2) {
     cl_ulong start, end;
@@ -189,6 +191,7 @@ class Table {
     size_t nrow;
     size_t ncol;
     int npart;
+    std::vector<ColumnType> colstype;
     std::vector<std::string> colsname;
     std::vector<size_t> colswidth;
     std::vector<size_t> isrowid;
@@ -234,7 +237,7 @@ class Table {
     };
 
     //! Add column
-    void addCol(std::string columname, size_t width, int isrid = 0, int iskda = 1) {
+    void addCol(std::string columname, size_t width, int isrid = 0, int iskda = 1, const ColumnType columntype = ColumnType::INT32) {
         size_t depth = nrow + VEC_LEN * 2 - 1;
         // the total size of one column
         size_t sizeonecol = size_t((width * depth + 64 - 1) / 64);
@@ -243,8 +246,118 @@ class Table {
         isrowid.push_back(isrid);
         iskdata.push_back(iskda);
         colswidth.push_back(width);
+        colstype.push_back(columntype);
         mode = 1;
     };
+
+
+    std::shared_ptr<arrow::RecordBatch> convertToRecordBatch() {
+        arrow::MemoryPool* pool = arrow::default_memory_pool();
+        std::vector<std::shared_ptr<arrow::Field>> fields;
+        std::vector<std::shared_ptr<arrow::ArrayBuilder>> builders; // Array builders for different column types.
+
+        for (size_t i = 0; i < ncol; ++i) {
+            if (mode == 1) {
+                const auto& colname = colsname[i];
+                switch (colstype[i]) {
+                    case ColumnType::INT32: {
+                        fields.push_back(arrow::field(colname, arrow::int32()));
+                        builders.push_back(std::make_shared<arrow::Int32Builder>());
+                        break;
+                    }
+                    case ColumnType::STRING: {
+                        fields.push_back(arrow::field(colname, arrow::utf8()));
+                        builders.push_back(std::make_shared<arrow::StringBuilder>());
+                        break;
+                    }                    
+                    // Add more types as necessary.
+                }
+            } else if (mode == 2) {
+                fields.push_back(arrow::field(std::to_string(i), arrow::int32()));
+                builders.push_back(std::make_shared<arrow::Int32Builder>());
+            }
+        }
+        auto schema = arrow::schema(fields);
+        std::vector<std::shared_ptr<arrow::Array>> arrays;
+        for (size_t i = 0; i < builders.size(); ++i) {
+            auto& builder = builders[i];
+            builder->Reset();
+            for (int j = 0; j < nrow; j++) {
+                if (mode == 1) {
+                    switch (colstype[i]) {
+                        case ColumnType::INT32: {
+                            auto typed_builder = std::static_pointer_cast<arrow::Int32Builder>(builder);
+                            typed_builder->Append(getInt32(j, i));
+                            break;
+                        }
+                        case ColumnType::STRING: {
+                            auto typed_builder = std::static_pointer_cast<arrow::StringBuilder>(builder);
+                            typed_builder->Append(getcharN<char, TPCDS_READ_MAX + 1>(j, i).data()); // Assume you have a getString function.
+                            break;
+                        }
+                        // Add more types as necessary.
+                    }
+                } else if (mode == 2) {
+                    auto typed_builder = std::static_pointer_cast<arrow::Int32Builder>(builder);
+                    typed_builder->Append(getInt32(j, i));
+                }
+            }
+            std::shared_ptr<arrow::Array> array;
+            builder->Finish(&array);
+            arrays.push_back(array);
+        }
+        return arrow::RecordBatch::Make(schema, nrow, arrays);
+    }
+
+    std::shared_ptr<arrow::Table> convertToArrowTable() {
+        std::vector<std::shared_ptr<arrow::Field>> fields;
+        std::vector<std::shared_ptr<arrow::ArrayBuilder>> builders; // Array builders for different column types.
+
+        for (size_t i = 0; i < colsname.size(); ++i) {
+            const auto& colname = colsname[i];
+            switch (colstype[i]) {
+                case ColumnType::INT32: {
+                    fields.push_back(arrow::field(colname, arrow::int32()));
+                    builders.push_back(std::make_shared<arrow::Int32Builder>());
+                    break;
+                }
+                case ColumnType::STRING: {
+                    fields.push_back(arrow::field(colname, arrow::utf8()));
+                    builders.push_back(std::make_shared<arrow::StringBuilder>());
+                    break;
+                }
+                // Add more types as necessary.
+            }
+        }
+        auto schema = arrow::schema(fields);
+        std::vector<std::shared_ptr<arrow::ChunkedArray>> chunkedArrays;
+        for (size_t i = 0; i < builders.size(); ++i) {
+            auto& builder = builders[i];
+            builder->Reset();
+            for (int j = 0; j < nrow; j++) {
+                switch (colstype[i]) {
+                    case ColumnType::INT32: {
+                        auto typed_builder = std::static_pointer_cast<arrow::Int32Builder>(builder);
+                        typed_builder->Append(getInt32(j, i));
+                        break;
+                    }
+                    case ColumnType::STRING: {
+                        auto typed_builder = std::static_pointer_cast<arrow::StringBuilder>(builder);
+                        typed_builder->Append(getcharN<char, TPCDS_READ_MAX + 1>(j, i).data()); // Assume you have a getString function.
+                        break;
+                    }
+                    // Add more types as necessary.
+                }
+            }
+
+            std::shared_ptr<arrow::Array> array;
+            builder->Finish(&array);
+            auto chunked_array = std::make_shared<arrow::ChunkedArray>(array);
+            chunkedArrays.push_back(chunked_array);
+        }
+        return arrow::Table::Make(schema, chunkedArrays);
+    }
+
 
     //! Load table to CPU memory
     void loadHost() {
@@ -1171,5 +1284,93 @@ class transEngine {
         clq.enqueueMigrateMemObjects(ib[rc], CL_MIGRATE_MEM_OBJECT_HOST, waitevt, outevt);
     };
 };
+
+
+// Load table to CPU memory from Arrow RecordBatch 
+std::shared_ptr<Table> covertFromArrowRecordBatchToTable(const arrow::RecordBatch & recordBatch) {
+    auto schema = recordBatch.schema();
+    int ncol = recordBatch.num_columns();
+    int nrow = recordBatch.num_rows();
+    auto tbl = std::make_shared<Table>("tmp", nrow, ncol, "", "arrow");
+    size_t depth = nrow + VEC_LEN * 2 - 1;
+
+    for (int i = 0; i < ncol; i++) {
+         switch (schema->field(i)->type()->id()) {
+            case arrow::Type::INT32: {
+                tbl->colstype.push_back(ColumnType::INT32);
+                size_t width = 4;
+                size_t sizeonecol = size_t((width * depth + 64 - 1) / 64);
+                tbl->size512.push_back(tbl->size512.back() + sizeonecol);
+                tbl->isrowid.push_back(0);
+                tbl->iskdata.push_back(1);
+                tbl->colswidth.push_back(width);
+                tbl->colsname.push_back(schema->field(i)->name());
+                break;
+            }
+            case arrow::Type::STRING: {
+                tbl->colstype.push_back(ColumnType::STRING);
+                size_t width = TPCDS_READ_MAX+1;
+                size_t sizeonecol = size_t((width * depth + 64 - 1) / 64);
+                tbl->size512.push_back(tbl->size512.back() + sizeonecol);
+                tbl->isrowid.push_back(0);
+                tbl->iskdata.push_back(1);
+                tbl->colswidth.push_back(width);
+                tbl->colsname.push_back(schema->field(i)->name());
+                break;
+            }
+        }
+    }
+
+    tbl->allocateHost();
+
+    for (int i = 0; i < ncol; i++) {
+        std::shared_ptr<arrow::Array> column = recordBatch.column(i);
+        switch (schema->field(i)->type()->id()) {
+            case arrow::Type::INT32: {
+            
+                // Cast column to the correct type
+                auto int32_column = std::static_pointer_cast<arrow::Int32Array>(column);
+                // Copy the data from the Arrow array to Table's data buffer
+                for (int j = 0; j < nrow; ++j) {
+                    // Check for null values
+                    if (!int32_column->IsNull(j)) {
+                        auto value = int32_column->Value(j);
+                        std::memcpy((char*)(tbl->data + tbl->size512[i] + 1) + j * sizeof(int32_t), &value, sizeof(int32_t));
+                    } else {
+                        int32_t null_value = 0; 
+                        std::memcpy((char*)(tbl->data + tbl->size512[i] + 1) + j * sizeof(int32_t), &null_value, sizeof(int32_t));
+                    }
+                }
+                break;
+            }
+            case arrow::Type::STRING: {
+                auto str_column = std::static_pointer_cast<arrow::StringArray>(column);
+               
+                // Copy each string from the Arrow array to your Table's data buffer
+                for (int j = 0; j < nrow; ++j) {
+                    // Check for null values
+                    if (!str_column->IsNull(j)) {
+                        std::string value = str_column->GetString(j);
+                        const char* c_str = value.c_str();
+                        size_t length = value.length();
+
+                        // Copy the string length followed by the string data
+                        std::memcpy((char*)(tbl->data + tbl->size512[i] + 1) + j * sizeof(char) * (getKeyLength("") + 1), c_str, length);
+                    } else {
+                        char temp_buf[5];
+                        memcpy(temp_buf, "NULL", 4);
+                        temp_buf[4] = '\0';
+                        std::memcpy((char*)(tbl->data + tbl->size512[i] + 1) + j * sizeof(char) * (getKeyLength("") + 1), &temp_buf, sizeof(char) * 5);
+                    }
+                }
+                break;
+            }
+        }
+
+        memcpy(tbl->data + tbl->size512[i], &nrow, 4);
+    };
+    return tbl;
+}
+
 
 #endif

@@ -21,6 +21,7 @@ MK_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
 CUR_DIR := $(patsubst %/,%,$(dir $(MK_PATH)))
 CUR_DIR ?= $(CUR_DIR)
 ORC_INSTALL_DIR := /localhdd/hza215/orc/ORC-1.9.0-SNAPSHOT-Linux
+GCC_INSTALL_DIR := /localhdd/hza215/gcc-9.5.0/gcc-9.5.0/usr/local/lib64
 ARROW_INCLUDE_DIR := /localhdd/hza215/bin/include
 ARROW_INSTALL_DIR := /localhdd/hza215/bin/lib
 .SECONDEXPANSION:
@@ -706,6 +707,7 @@ CXXFLAGS += -std=c++17 -O2 -g -w -fPIC \
 LDFLAGS += -pthread -L$(XILINX_XRT)/lib -lxilinxopencl
 LDFLAGS += -L$(XILINX_VIVADO)/lnx64/tools/fpo_v7_0 -Wl,--as-needed -lgmp -lmpfr \
 	   -lIp_floating_point_v7_0_bitacc_cmodel
+#LDFLAGS += -L$(GCC_INSTALL_DIR) -Wl,-rpath=$(GCC_INSTALL_DIR)
 LDFLAGS += -L$(ORC_INSTALL_DIR)/lib -lorc -lprotobuf -lsnappy -lz -llz4 -lzstd
 LDFLAGS += -L$(ARROW_INSTALL_DIR) -larrow
 OBJ_FILES = $(foreach s,$(SRCS),$(OBJ_DIR)/$(basename $(s)).o)
@@ -787,7 +789,8 @@ run_hw:
 	make TARGET=hw run
 
 run: host xclbin $(EMU_CONFIG) $(DATA_STAMP)
-	$(EMU_MODE); \
+	export LD_LIBRARY_PATH=$(GCC_INSTALL_DIR):$$LD_LIBRARY_PATH; \
+  $(EMU_MODE); \
 	$(EXE_FILE) $(HOST_ARGS)
 
 check: run
